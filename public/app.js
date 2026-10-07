@@ -12,6 +12,9 @@ let boardSel = {};   // matchupId -> 'a'|'b'
 let propSel = {};    // propId -> 'a'|'b'
 let pickSel = {};    // matchupId -> 'a'|'b'
 let settleSel = { matchups: {}, props: {} };
+let settleWeekId = null;       // week selected for settling in the commish tab (null = auto)
+let settleWeekData = null;     // {week, matchups, props} when settling a non-open week
+let settleWeekDataLoading = false;
 let commishAuthed = sessionStorage.getItem("tgb_commish") === "1";
 
 // ---------- tabs ----------
@@ -142,7 +145,7 @@ function renderPickem() {
   const locked = w.status !== "open";
   const mine = session ? STATE.pickems.find((p) => p.user_id === session.id) : null;
   let html = `<div class="card"><h2>✅ Pick'em — Week ${w.week_number}</h2>
-    <p class="note">Pick all ${STATE.matchups.length} winners. Tiebreaker: total points scored across all matchups.</p>`;
+    <p class="note">Pick all ${STATE.matchups.length} winners. Tiebreaker: total points scored across all matchups. Most correct picks wins <b>200 Goon Bucks</b>.</p>`;
   for (const m of STATE.matchups) {
     const sel = pickSel[m.id] ?? (mine ? JSON.parse(mine.picks).find((p) => p.matchup_id === m.id)?.side : null);
     html += `<div class="pick-row">
@@ -270,29 +273,56 @@ function renderCommish() {
 
   const w = STATE.week;
   let html = `<div class="card"><h2>🔐 Commish Panel</h2>`;
-  if (w && w.status === "open") {
-    html += `<h3 style="color:var(--green)">Settle Week ${w.week_number}</h3><p class="note">Mark every winner, then settle. This pays out all bets and scores pick'ems. Can't be undone.</p>`;
-    for (const m of STATE.matchups) {
-      const s = settleSel.matchups[m.id];
-      html += `<div class="field"><label>${esc(m.team_a)} vs ${esc(m.team_b)}</label>
-        <div class="settle-grid">
-          <button data-sm="${m.id}" data-side="a" class="${s === "a" ? "picked" : ""}">${esc(m.team_a)} wins</button>
-          <button data-sm="${m.id}" data-side="b" class="${s === "b" ? "picked" : ""}">${esc(m.team_b)} wins</button>
-        </div></div>`;
-    }
-    for (const p of STATE.props) {
-      const s = settleSel.props[p.id];
-      html += `<div class="field"><label>${esc(p.label)}</label>
-        <div class="settle-grid">
-          <button data-sp="${p.id}" data-side="a" class="${s === "a" ? "picked" : ""}">${esc(p.option_a)}</button>
-          <button data-sp="${p.id}" data-side="b" class="${s === "b" ? "picked" : ""}">${esc(p.option_b)}</button>
-        </div></div>`;
-    }
-    html += `<div class="field"><label>Tiebreaker actual — total points across all matchups</label><input type="number" min="0" id="tbActual" placeholder="e.g. 1040"></div>
-      <div class="error" id="settleErr"></div>
-      <button id="settleBtn" class="gold" style="width:100%">Settle Week ${w.week_number}</button>`;
+  // Settle any unsettled week (open or locked) — so opening a new week never
+  // strands an older one.
+  const settleable = STATE.weeks.filter((x) => x.status !== "settled");
+  const openId = w && w.status === "open" ? w.id : null;
+  if (settleWeekId == null || !settleable.some((x) => x.id === settleWeekId)) {
+    settleWeekId = openId || (settleable.length ? settleable[settleable.length - 1].id : null);
+    settleSel = { matchups: {}, props: {} };
+    settleWeekData = null;
+    settleWeekDataLoading = false;
+  }
+  if (!settleable.length) {
+    html += `<p class="note">Every week is settled. Open a new week below.</p>`;
   } else {
-    html += `<p class="note">No open week to settle.</p>`;
+    const needRemote = settleWeekId !== openId;
+    if (needRemote && !settleWeekData && !settleWeekDataLoading) {
+      settleWeekDataLoading = true;
+      api("GET", "/api/week/" + settleWeekId)
+        .then((d) => { settleWeekData = d; })
+        .catch(() => {})
+        .finally(() => { settleWeekDataLoading = false; renderCommish(); });
+    }
+    const sw = needRemote ? settleWeekData : { week: w, matchups: STATE.matchups, props: STATE.props };
+    html += `<h3 style="color:var(--green)">Settle a Week</h3>
+      <div class="field"><label>Week to settle</label><select id="settleWeekSel">` +
+      settleable.map((x) => `<option value="${x.id}"${x.id === settleWeekId ? " selected" : ""}>Week ${x.week_number}${x.id === openId ? " (current)" : " (locked)"}</option>`).join("") +
+      `</select></div>`;
+    if (needRemote && !sw) {
+      html += `<p class="note">Loading week…</p>`;
+    } else {
+      html += `<p class="note">Mark every winner, then settle. This pays out all bets, scores pick'ems, and awards 200 GB to the best pick'em. Can't be undone.</p>`;
+      for (const m of sw.matchups) {
+        const s = settleSel.matchups[m.id];
+        html += `<div class="field"><label>${esc(m.team_a)} vs ${esc(m.team_b)}</label>
+          <div class="settle-grid">
+            <button data-sm="${m.id}" data-side="a" class="${s === "a" ? "picked" : ""}">${esc(m.team_a)} wins</button>
+            <button data-sm="${m.id}" data-side="b" class="${s === "b" ? "picked" : ""}">${esc(m.team_b)} wins</button>
+          </div></div>`;
+      }
+      for (const p of sw.props) {
+        const s = settleSel.props[p.id];
+        html += `<div class="field"><label>${esc(p.label)}</label>
+          <div class="settle-grid">
+            <button data-sp="${p.id}" data-side="a" class="${s === "a" ? "picked" : ""}">${esc(p.option_a)}</button>
+            <button data-sp="${p.id}" data-side="b" class="${s === "b" ? "picked" : ""}">${esc(p.option_b)}</button>
+          </div></div>`;
+      }
+      html += `<div class="field"><label>Tiebreaker actual — total points across all matchups</label><input type="number" min="0" id="tbActual" placeholder="e.g. 1040"></div>
+        <div class="error" id="settleErr"></div>
+        <button id="settleBtn" class="gold" style="width:100%">Settle Week ${sw.week.week_number}</button>`;
+    }
   }
 
   html += `<h3 style="color:var(--green); margin-top:20px">Open a New Week</h3>
@@ -319,17 +349,28 @@ function renderCommish() {
   el.querySelectorAll("[data-sp]").forEach((b) => b.addEventListener("click", () => {
     settleSel.props[b.dataset.sp] = b.dataset.side; renderCommish();
   }));
+  const settleWeekSel = $("settleWeekSel");
+  if (settleWeekSel) settleWeekSel.addEventListener("change", () => {
+    settleWeekId = Number(settleWeekSel.value);
+    settleSel = { matchups: {}, props: {} };
+    settleWeekData = null;
+    settleWeekDataLoading = false;
+    renderCommish();
+  });
   const settleBtn = $("settleBtn");
   if (settleBtn) settleBtn.addEventListener("click", async () => {
     $("settleErr").textContent = "";
     try {
       await api("POST", "/api/admin/settle", {
         passcode: "10502",
+        week_id: settleWeekId,
         matchup_winners: Object.fromEntries(Object.entries(settleSel.matchups).map(([k, v]) => [Number(k), v])),
         prop_winners: Object.fromEntries(Object.entries(settleSel.props).map(([k, v]) => [Number(k), v])),
         tiebreaker_actual: $("tbActual").value,
       });
       settleSel = { matchups: {}, props: {} };
+      settleWeekId = null;
+      settleWeekData = null;
       await refresh();
     } catch (e) { $("settleErr").textContent = e.message; }
   });

@@ -11,6 +11,7 @@ const { seedIfEmpty } = require("./seed");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || "10502"; // commish-only actions
+const PICKEM_PRIZE = 200; // Goon Bucks awarded to the best pick'em entry each settled week
 
 const TEAMS = [
   "The Pezzler",
@@ -103,6 +104,22 @@ app.get("/api/state", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Could not load league state." });
+  }
+});
+
+// Full data for one week (used by the commish tab to settle older weeks).
+// Public — bets, picks and lines are visible to the whole league anyway.
+app.get("/api/week/:id", async (req, res) => {
+  try {
+    const weekId = Number(req.params.id);
+    const week = (await db.query("SELECT * FROM weeks WHERE id = $1", [weekId])).rows[0];
+    if (!week) return res.status(404).json({ error: "Week not found." });
+    const matchups = (await db.query("SELECT * FROM matchups WHERE week_id = $1 ORDER BY idx", [weekId])).rows;
+    const props = (await db.query("SELECT * FROM props WHERE week_id = $1 ORDER BY idx", [weekId])).rows;
+    res.json({ week, matchups, props });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not load week." });
   }
 });
 
@@ -225,8 +242,18 @@ app.post("/api/pickem", async (req, res) => {
 app.post("/api/admin/settle", async (req, res) => {
   try {
     if (!checkAdmin(req, res)) return;
-    const week = await currentWeek();
-    if (!week) return res.status(400).json({ error: "No open week to settle." });
+    // Settle a specific week when week_id is given (lets the commish settle an
+    // older week after a newer one is already open); otherwise the open week.
+    const weekId = req.body.week_id ? Number(req.body.week_id) : null;
+    let week;
+    if (weekId) {
+      week = (await db.query("SELECT * FROM weeks WHERE id = $1", [weekId])).rows[0];
+      if (!week) return res.status(400).json({ error: "Week not found." });
+      if (week.status === "settled") return res.status(400).json({ error: `Week ${week.week_number} is already settled.` });
+    } else {
+      week = await currentWeek();
+      if (!week) return res.status(400).json({ error: "No open week to settle." });
+    }
 
     const matchupWinners = req.body.matchup_winners || {}; // { matchupId: 'a'|'b' }
     const propWinners = req.body.prop_winners || {};       // { propId: 'a'|'b' }
@@ -278,6 +305,20 @@ app.post("/api/admin/settle", async (req, res) => {
         await db.query("UPDATE pickems SET correct = $1, tiebreak_diff = $2 WHERE id = $3", [correct, diff, e.id]);
       }
       await db.query("UPDATE weeks SET tiebreaker_actual = $1 WHERE id = $2", [actual, week.id]);
+
+      // Pick'em prize: 200 Goon Bucks to the best entry — most correct picks,
+      // ties broken by closest tiebreaker. A perfect tie at the top splits it.
+      const scored = (await db.query("SELECT * FROM pickems WHERE week_id = $1", [week.id])).rows;
+      if (scored.length) {
+        const maxCorrect = Math.max(...scored.map((e) => Number(e.correct)));
+        let leaders = scored.filter((e) => Number(e.correct) === maxCorrect);
+        const minDiff = Math.min(...leaders.map((e) => Number(e.tiebreak_diff)));
+        leaders = leaders.filter((e) => Number(e.tiebreak_diff) === minDiff);
+        const prize = Math.round((PICKEM_PRIZE / leaders.length) * 100) / 100;
+        for (const l of leaders) {
+          await db.query("UPDATE users SET bankroll = bankroll + $1 WHERE id = $2", [prize, l.user_id]);
+        }
+      }
     }
 
     await db.query("UPDATE weeks SET status = 'settled' WHERE id = $1", [week.id]);

@@ -56,8 +56,10 @@ That's it. Bankrolls, bets, and picks all live in the shared Postgres database.
 
 - **Join:** everyone opens the link, claims their team, gets 1,000 GB.
 - **During the week:** league bets on games + props, locks in pick'ems.
-- **After games:** Commish tab → enter passcode → mark each matchup/prop winner, enter the
-  actual total points (tiebreaker) → **Settle Week**. Payouts and pick'em scores apply to everyone.
+- **After games:** Commish tab → enter passcode → pick the week to settle (you can settle
+  an older week even after a new one is open) → mark each matchup/prop winner, enter the
+  actual total points (tiebreaker) → **Settle Week**. Payouts and pick'em scores apply to everyone,
+  and the best pick'em entry wins **200 GB** (most correct picks, tiebreaker breaks ties).
 - **Next week:** Commish tab → fill in the 5 new matchups + odds and 6 props → **Open New Week**.
 
 ## Tech notes
