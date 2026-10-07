@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Tune and Goon Book</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="gated">
+<div id="gate">
+  <div class="gate-card">
+    <h1>TUNE AND <span class="gold">GOON</span> BOOK</h1>
+    <p class="note">League access only. Enter the passcode.</p>
+    <input id="gateInput" type="password" inputmode="numeric" autocomplete="off" placeholder="•••••" maxlength="16">
+    <div class="error" id="gateErr"></div>
+    <button id="gateBtn" style="width:100%; margin-top:8px;">Enter</button>
+  </div>
+</div>
+<header>
+  <h1>TUNE AND <span class="gold">GOON</span> BOOK</h1>
+  <div class="sub">The league's fake-money sportsbook <span class="fake-tag">Goon Bucks · fake</span></div>
+  <div class="bankroll-bar" id="bankrollBar" style="display:none">
+    <span class="who" id="whoAmI"></span>
+    <span class="amt" id="myBankroll"></span>
+  </div>
+</header>
+
+<main>
+  <section class="tab active" id="tab-board"><div id="board"></div></section>
+  <section class="tab" id="tab-bets"><div id="betsFeed"></div></section>
+  <section class="tab" id="tab-pickem"><div id="pickem"></div></section>
+  <section class="tab" id="tab-props"><div id="props"></div></section>
+  <section class="tab" id="tab-leader"><div id="leaderboard"></div></section>
+  <section class="tab" id="tab-toilet">
+    <div class="card stub">
+      <div class="big">🚽🏆</div>
+      <h2 style="color:var(--green)">The Toilet Bowl</h2>
+      <p>Coming later in the season. The losers' bracket where bad teams fight for pride and the winner fights for... slightly less shame.</p>
+      <p class="note">The commish will open it when playoff time arrives.</p>
+    </div>
+  </section>
+  <section class="tab" id="tab-commish"><div id="commish"></div></section>
+</main>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="board" class="active">📖 Board</button>
+  <button data-tab="bets">🎟️ Bets</button>
+  <button data-tab="pickem">✅ Pick'em</button>
+  <button data-tab="props">🎲 Props</button>
+  <button data-tab="leader">🏆 Board</button>
+  <button data-tab="toilet">🚽 Bowl</button>
+  <button data-tab="commish">🔐 Commish</button>
+</nav>
+
+<div class="modal-back" id="joinModal" style="display:none">
+  <div class="modal">
+    <h2>Join the Book</h2>
+    <p class="note">Claim your team. One bettor per team, first come first served. You start with <b>1,000 Goon Bucks (fake)</b>.</p>
+    <div class="field">
+      <label>Your team</label>
+      <select id="joinTeam"></select>
+    </div>
+    <div class="error" id="joinError"></div>
+    <button id="joinBtn" style="width:100%; margin-top:8px;">Claim team &amp; get 1,000 GB</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

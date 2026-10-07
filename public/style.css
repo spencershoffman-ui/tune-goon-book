@@ -1,0 +1,150 @@
+/* front-door gate */
+#gate {
+  position: fixed; inset: 0; z-index: 50;
+  background: linear-gradient(135deg, var(--green-deep), var(--green));
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.gate-card {
+  background: var(--cream); border-radius: 14px; padding: 26px 22px;
+  max-width: 340px; width: 100%; text-align: center;
+  border-top: 4px solid var(--gold);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+.gate-card h1 { margin: 0 0 6px; font-size: 1.3rem; color: var(--green); letter-spacing: 0.5px; }
+.gate-card h1 .gold { color: var(--gold); }
+.gate-card .note { color: var(--muted); font-size: 0.85rem; margin: 0 0 14px; }
+#gateInput {
+  width: 100%; font-size: 1.5rem; text-align: center; letter-spacing: 8px;
+  padding: 10px; border: 2px solid #e5e0d0; border-radius: 10px;
+}
+#gateInput:focus { outline: none; border-color: var(--gold); }
+body.gated header, body.gated main, body.gated nav.tabs { display: none; }
+
+/* Tune and Goon Book — green & gold, mobile-first */
+:root {
+  --green: #0b3d2e;
+  --green-deep: #072a20;
+  --gold: #d4a72c;
+  --gold-soft: #f0d488;
+  --cream: #f7f3e8;
+  --ink: #1c1a14;
+  --muted: #6f6a5c;
+  --card: #ffffff;
+  --win: #1c7a3d;
+  --loss: #b3372f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  padding-bottom: 90px;
+}
+header {
+  background: linear-gradient(135deg, var(--green-deep), var(--green));
+  color: var(--cream);
+  padding: 18px 16px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 3px solid var(--gold);
+}
+header h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.5px; }
+header h1 .gold { color: var(--gold-soft); }
+.sub { font-size: 0.8rem; opacity: 0.85; margin-top: 2px; }
+.bankroll-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 10px; background: rgba(0,0,0,0.25);
+  border: 1px solid var(--gold); border-radius: 10px; padding: 8px 12px;
+}
+.bankroll-bar .amt { font-size: 1.25rem; font-weight: 800; color: var(--gold-soft); }
+.bankroll-bar .who { font-size: 0.85rem; opacity: 0.9; }
+main { max-width: 640px; margin: 0 auto; padding: 12px 12px 0; }
+.card {
+  background: var(--card); border-radius: 12px; padding: 14px;
+  margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border-top: 3px solid var(--gold);
+}
+.card h2 { margin: 0 0 10px; font-size: 1.05rem; color: var(--green); }
+.matchup { border: 1px solid #e5e0d0; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+.matchup .teams { display: flex; }
+.side {
+  flex: 1; padding: 12px 8px; text-align: center; cursor: pointer;
+  border: none; background: #fff; font-size: 0.95rem;
+  border-right: 1px solid #e5e0d0; color: var(--ink);
+}
+.side:last-child { border-right: none; }
+.side .odds { display: block; font-weight: 800; color: var(--green); margin-top: 4px; }
+.side.selected { background: var(--green); color: #fff; }
+.side.selected .odds { color: var(--gold-soft); }
+.side:disabled { opacity: 0.5; cursor: default; }
+.bet-row { display: flex; gap: 8px; padding: 10px; background: #faf7ee; align-items: center; }
+.bet-row input {
+  flex: 1; padding: 10px; font-size: 1rem; border: 1px solid #d8d2bd;
+  border-radius: 8px; min-width: 0;
+}
+button {
+  background: var(--green); color: #fff; border: none; border-radius: 8px;
+  padding: 10px 16px; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+}
+button.gold { background: var(--gold); color: var(--ink); }
+button:disabled { opacity: 0.5; cursor: default; }
+.bet-feed { font-size: 0.9rem; }
+.bet-feed .row {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 8px 0; border-bottom: 1px solid #eee8d5;
+}
+.badge {
+  font-size: 0.7rem; font-weight: 800; padding: 2px 8px; border-radius: 20px;
+  text-transform: uppercase; white-space: nowrap;
+}
+.badge.open { background: #e8e2cd; color: var(--muted); }
+.badge.won { background: #d9f0e0; color: var(--win); }
+.badge.lost { background: #f6dcd9; color: var(--loss); }
+table.board { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+table.board td, table.board th { padding: 8px 4px; border-bottom: 1px solid #eee8d5; text-align: left; }
+table.board th { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+table.board td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.leader { font-weight: 800; color: var(--green); }
+nav.tabs {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+  display: flex; background: var(--green-deep); border-top: 2px solid var(--gold);
+  overflow-x: auto;
+}
+nav.tabs button {
+  flex: 1; background: none; border-radius: 0; padding: 12px 4px;
+  font-size: 0.72rem; color: #cbbf9d; white-space: nowrap;
+}
+nav.tabs button.active { color: var(--gold-soft); box-shadow: inset 0 3px 0 var(--gold); }
+.tab { display: none; }
+.tab.active { display: block; }
+.field { margin-bottom: 10px; }
+.field label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.field input, .field select {
+  width: 100%; padding: 10px; font-size: 1rem;
+  border: 1px solid #d8d2bd; border-radius: 8px; background: #fff; color: var(--ink);
+}
+.pick-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.pick-row .vs { align-self: center; font-size: 0.8rem; color: var(--muted); }
+.pick-row button { flex: 1; padding: 10px 4px; font-size: 0.85rem; background: #efe9d6; color: var(--ink); }
+.pick-row button.picked { background: var(--green); color: #fff; }
+.note { font-size: 0.82rem; color: var(--muted); }
+.error { color: var(--loss); font-size: 0.85rem; margin-top: 8px; }
+.success { color: var(--win); font-size: 0.85rem; margin-top: 8px; }
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal { background: var(--cream); border-radius: 14px; padding: 20px; width: 100%; max-width: 380px; border-top: 4px solid var(--gold); }
+.modal h2 { color: var(--green); margin-top: 0; }
+.settle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0 12px; }
+.settle-grid button { background: #efe9d6; color: var(--ink); padding: 8px 4px; font-size: 0.8rem; }
+.settle-grid button.picked { background: var(--green); color: #fff; }
+.stub { text-align: center; padding: 40px 20px; color: var(--muted); }
+.stub .big { font-size: 2.5rem; }
+.fake-tag {
+  display: inline-block; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.5px;
+  background: var(--gold); color: var(--ink); border-radius: 4px; padding: 2px 6px;
+  text-transform: uppercase; vertical-align: middle;
+}

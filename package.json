@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.21.2","pg":"^8.13.1"},"description":"Tune and Goon Book — a fake-money sportsbook for the Tune and Goon fantasy football league. Goon Bucks are fake, the glory is real.","engines":{"node":">=22"},"license":"MIT","main":"server.js","name":"tune-and-goon-book","scripts":{"start":"node server.js"},"version":"1.0.0"}
