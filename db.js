@@ -98,7 +98,63 @@ async function init() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (user_id, week_id)
     );
+    CREATE TABLE IF NOT EXISTS spread_bets (
+      id ${idCol},
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      week_id INTEGER NOT NULL REFERENCES weeks(id),
+      matchup_id INTEGER NOT NULL REFERENCES matchups(id),
+      side TEXT NOT NULL,
+      odds INTEGER NOT NULL,
+      stake NUMERIC NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      payout NUMERIC,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS futures (
+      id ${idCol},
+      category TEXT NOT NULL,
+      team_name TEXT NOT NULL,
+      label TEXT NOT NULL,
+      line NUMERIC,
+      option_a TEXT NOT NULL,
+      option_b TEXT,
+      odds_a INTEGER NOT NULL,
+      odds_b INTEGER,
+      status TEXT NOT NULL DEFAULT 'open',
+      winner TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS future_bets (
+      id ${idCol},
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      future_id INTEGER NOT NULL REFERENCES futures(id),
+      side TEXT NOT NULL,
+      odds INTEGER NOT NULL,
+      stake NUMERIC NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      payout NUMERIC,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  // Migrations for tables created before these columns existed.
+  const migrations = [
+    ["matchups", "spread_line", "NUMERIC"],
+    ["matchups", "spread_odds_a", "INTEGER DEFAULT -110"],
+    ["matchups", "spread_odds_b", "INTEGER DEFAULT -110"],
+    ["matchups", "spread_winner", "TEXT"],
+  ];
+  for (const [table, col, type] of migrations) {
+    try {
+      if (usePg) {
+        await pgPool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+      } else {
+        sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+      }
+    } catch (e) {
+      // SQLite throws if the column already exists — safe to ignore.
+    }
+  }
 }
 
 // Run a statement that returns no rows.

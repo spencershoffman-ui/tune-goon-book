@@ -55,12 +55,18 @@ That's it. Bankrolls, bets, and picks all live in the shared Postgres database.
 ## Commish cheat sheet
 
 - **Join:** everyone opens the link, claims their team, gets 1,000 GB.
-- **During the week:** league bets on games + props, locks in pick'ems.
+- **During the week:** league bets on games + spreads + props, locks in pick'ems, and can bet
+  season futures (win totals, league champion, make playoffs) on the Futures tab.
 - **After games:** Commish tab → enter passcode → pick the week to settle (you can settle
-  an older week even after a new one is open) → mark each matchup/prop winner, enter the
-  actual total points (tiebreaker) → **Settle Week**. Payouts and pick'em scores apply to everyone,
-  and the best pick'em entry wins **200 GB** (most correct picks, tiebreaker breaks ties).
-- **Next week:** Commish tab → fill in the 5 new matchups + odds and 6 props → **Open New Week**.
+  an older week even after a new one is open) → mark each matchup winner, spread winner,
+  and prop winner, enter the actual total points (tiebreaker) → **Settle Week**.
+  Payouts and pick'em scores apply to everyone, and the best pick'em entry wins **200 GB**
+  (most correct picks, tiebreaker breaks ties).
+- **Next week:** Commish tab → fill in the 5 new matchups + moneyline odds + spreads and
+  6 props → **Open New Week**.
+- **Futures:** Commish tab → Futures → post win totals, champion, and playoff markets per team.
+  Settle win totals / playoff markets individually; crown the champion once to settle all
+  champion futures at once.
 
 ## Tech notes
 

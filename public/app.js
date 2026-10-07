@@ -5,13 +5,16 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtOdds = (o) => (o > 0 ? "+" + o : String(o));
 const fmtGB = (n) => Number(n).toFixed(2) + " GB";
+const fmtSpread = (n) => (n > 0 ? "+" + n : String(n));
 
 let STATE = null;
 let session = JSON.parse(localStorage.getItem("tgb_session") || "null");
-let boardSel = {};   // matchupId -> 'a'|'b'
+let boardSel = {};   // matchupId -> 'a'|'b' (moneyline)
+let spreadSel = {};  // matchupId -> 'a'|'b' (spread)
 let propSel = {};    // propId -> 'a'|'b'
 let pickSel = {};    // matchupId -> 'a'|'b'
-let settleSel = { matchups: {}, props: {} };
+let futSel = {};     // futureId -> 'a'|'b'
+let settleSel = { matchups: {}, props: {}, spreads: {} };
 let settleWeekId = null;       // week selected for settling in the commish tab (null = auto)
 let settleWeekData = null;     // {week, matchups, props} when settling a non-open week
 let settleWeekDataLoading = false;
@@ -87,8 +90,20 @@ function renderBoard() {
         <button class="side ${sel === "a" ? "selected" : ""}" data-m="${m.id}" data-side="a" ${locked || !session ? "disabled" : ""}>${esc(m.team_a)}<span class="odds">${fmtOdds(m.odds_a)}</span></button>
         <button class="side ${sel === "b" ? "selected" : ""}" data-m="${m.id}" data-side="b" ${locked || !session ? "disabled" : ""}>${esc(m.team_b)}<span class="odds">${fmtOdds(m.odds_b)}</span></button>
       </div>
-      ${sel && !locked && session ? `<div class="bet-row"><input type="number" min="1" step="0.01" inputmode="decimal" placeholder="Stake (GB)" id="stake-${m.id}"><button data-place="${m.id}">Bet ${esc(sel === "a" ? m.team_a : m.team_b)}</button></div><div class="error" id="err-${m.id}"></div>` : ""}
-    </div>`;
+      ${sel && !locked && session ? `<div class="bet-row"><input type="number" min="1" step="0.01" inputmode="decimal" placeholder="Stake (GB)" id="stake-${m.id}"><button data-place="${m.id}">Bet ${esc(sel === "a" ? m.team_a : m.team_b)}</button></div><div class="error" id="err-${m.id}"></div>` : ""}`;
+    if (m.spread_line !== null && m.spread_line !== undefined) {
+      const line = Number(m.spread_line);
+      const ssel = spreadSel[m.id];
+      html += `<div class="spread-row">
+        <div class="note" style="padding:6px 10px 0"><b>Spread</b></div>
+        <div class="teams">
+          <button class="side ${ssel === "a" ? "selected" : ""}" data-spm="${m.id}" data-side="a" ${locked || !session ? "disabled" : ""}>${esc(m.team_a)} ${fmtSpread(line)}<span class="odds">${fmtOdds(m.spread_odds_a)}</span></button>
+          <button class="side ${ssel === "b" ? "selected" : ""}" data-spm="${m.id}" data-side="b" ${locked || !session ? "disabled" : ""}>${esc(m.team_b)} ${fmtSpread(-line)}<span class="odds">${fmtOdds(m.spread_odds_b)}</span></button>
+        </div>
+        ${ssel && !locked && session ? `<div class="bet-row"><input type="number" min="1" step="0.01" inputmode="decimal" placeholder="Stake (GB)" id="sstake-${m.id}"><button data-spplace="${m.id}">Bet spread</button></div><div class="error" id="serr-${m.id}"></div>` : ""}
+      </div>`;
+    }
+    html += `</div>`;
   }
   html += locked ? `<p class="note">This week is locked — no more bets.</p>` : (!session ? `<p class="note">Join the book to place bets.</p>` : "");
   html += `</div>`;
@@ -109,6 +124,20 @@ function renderBoard() {
       await refresh();
     } catch (e) { errEl.textContent = e.message; }
   }));
+  el.querySelectorAll(".side[data-spm]").forEach((b) => b.addEventListener("click", () => {
+    spreadSel[b.dataset.spm] = b.dataset.side;
+    renderBoard();
+  }));
+  el.querySelectorAll("[data-spplace]").forEach((b) => b.addEventListener("click", async () => {
+    const mid = b.dataset.spplace;
+    const errEl = $("serr-" + mid);
+    errEl.textContent = "";
+    try {
+      await api("POST", "/api/spread-bets", { user_id: session.id, matchup_id: Number(mid), side: spreadSel[mid], stake: $("sstake-" + mid).value });
+      delete spreadSel[mid];
+      await refresh();
+    } catch (e) { errEl.textContent = e.message; }
+  }));
 }
 
 function betLabel(b) {
@@ -121,11 +150,23 @@ function propBetLabel(b) {
   if (!p) return "Prop bet";
   return p.label + " — " + (b.side === "a" ? p.option_a : p.option_b);
 }
+function spreadBetLabel(b) {
+  const m = STATE.matchups.find((x) => x.id === b.matchup_id);
+  if (!m || m.spread_line === null || m.spread_line === undefined) return "Spread bet";
+  const line = Number(m.spread_line) * (b.side === "a" ? 1 : -1);
+  return `Spread: ${b.side === "a" ? m.team_a : m.team_b} ${fmtSpread(line)}`;
+}
+function futureBetLabel(b) {
+  const f = STATE.futures.find((x) => x.id === b.future_id);
+  if (!f) return "Future bet";
+  return `${f.label} — ${b.side === "a" ? f.option_a : f.option_b}`;
+}
 
 function renderBetsFeed() {
   const el = $("betsFeed");
   const all = [
     ...STATE.bets.map((b) => ({ ...b, label: betLabel(b), kind: "Game" })),
+    ...STATE.spreadBets.map((b) => ({ ...b, label: spreadBetLabel(b), kind: "Spread" })),
     ...STATE.propBets.map((b) => ({ ...b, label: propBetLabel(b), kind: "Prop" })),
   ];
   let html = `<div class="card"><h2>🎟️ Everyone's Bets — Week ${STATE.week ? STATE.week.week_number : "–"}</h2>`;
@@ -135,6 +176,13 @@ function renderBetsFeed() {
       <div><b>${esc(b.team_name)}</b> <span class="note">${b.kind}</span><br><span class="note">${esc(b.label)} (${fmtOdds(b.odds)}) · ${fmtGB(b.stake)}</span></div>
       <div><span class="badge ${b.status}">${b.status}${b.status === "won" && b.payout ? " +" + fmtGB(b.payout) : ""}</span></div>
     </div>`).join("") + `</div></div>`;
+  if (STATE.futureBets.length) {
+    html += `<div class="card"><h2>🔮 Everyone's Futures</h2><div class="bet-feed">` + STATE.futureBets.map((b) => `
+      <div class="row">
+        <div><b>${esc(b.team_name)}</b> <span class="note">Future</span><br><span class="note">${esc(futureBetLabel(b))} (${fmtOdds(b.odds)}) · ${fmtGB(b.stake)}</span></div>
+        <div><span class="badge ${b.status}">${b.status}${b.status === "won" && b.payout ? " +" + fmtGB(b.payout) : ""}</span></div>
+      </div>`).join("") + `</div></div>`;
+  }
   el.innerHTML = html;
 }
 
@@ -229,6 +277,65 @@ function renderProps() {
   }));
 }
 
+function renderFutures() {
+  const el = $("futures");
+  const open = STATE.futures.filter((f) => f.status === "open");
+  const settled = STATE.futures.filter((f) => f.status !== "open");
+  let html = `<div class="card"><h2>🔮 Futures</h2>
+    <p class="note">Season-long markets. Winnings are paid in Goon Bucks when the commish settles.</p></div>`;
+
+  const sections = [
+    ["🏆 League Champion", open.filter((f) => f.category === "champion"), "Pick the team you think lifts the trophy."],
+    ["📈 Season Win Totals", open.filter((f) => f.category === "wins"), "Over or under the posted win total."],
+    ["🎟️ Make the Playoffs", open.filter((f) => f.category === "playoffs"), "Yes or no — simple."],
+  ];
+  for (const [title, list, sub] of sections) {
+    html += `<div class="card"><h2>${title}</h2><p class="note">${sub}</p>`;
+    if (!list.length) html += `<p class="note">No open markets here yet — the commish hasn't posted these.</p>`;
+    for (const f of list) {
+      const sel = futSel[f.id];
+      const isChamp = f.category === "champion";
+      const lineTxt = !isChamp && f.line !== null && f.line !== undefined ? ` ${f.line}` : "";
+      const sides = f.option_b !== null && f.option_b !== undefined
+        ? [["a", f.option_a + lineTxt, f.odds_a], ["b", f.option_b + lineTxt, f.odds_b]]
+        : [["a", f.option_a, f.odds_a]];
+      html += `<div class="matchup">` +
+        (isChamp ? "" : `<div class="note" style="padding:8px 10px 0"><b>${esc(f.label)}</b></div>`) +
+        `<div class="teams">`;
+      for (const [side, label, odds] of sides) {
+        html += `<button class="side ${sel === side ? "selected" : ""}" data-f="${f.id}" data-side="${side}" ${!session ? "disabled" : ""}>${esc(label)}<span class="odds">${fmtOdds(odds)}</span></button>`;
+      }
+      html += `</div>
+        ${sel && session ? `<div class="bet-row"><input type="number" min="1" step="0.01" inputmode="decimal" placeholder="Stake (GB)" id="fstake-${f.id}"><button data-fplace="${f.id}">Bet</button></div><div class="error" id="ferr-${f.id}"></div>` : ""}
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  if (settled.length) {
+    html += `<div class="card"><h2>Settled Futures</h2><div class="bet-feed">` + settled.map((f) => {
+      const wonBy = f.winner === "a" ? f.option_a : f.option_b;
+      return `<div class="row"><div><b>${esc(f.label)}</b><br><span class="note">Won by: ${esc(wonBy || "—")}</span></div></div>`;
+    }).join("") + `</div></div>`;
+  }
+  if (!session) html += `<div class="card"><p class="note">Join the book to bet futures.</p></div>`;
+  el.innerHTML = html;
+
+  el.querySelectorAll(".side[data-f]").forEach((b) => b.addEventListener("click", () => {
+    futSel[b.dataset.f] = b.dataset.side;
+    renderFutures();
+  }));
+  el.querySelectorAll("[data-fplace]").forEach((b) => b.addEventListener("click", async () => {
+    const fid = b.dataset.fplace;
+    const errEl = $("ferr-" + fid);
+    errEl.textContent = "";
+    try {
+      await api("POST", "/api/future-bets", { user_id: session.id, future_id: Number(fid), side: futSel[fid], stake: $("fstake-" + fid).value });
+      delete futSel[fid];
+      await refresh();
+    } catch (e) { errEl.textContent = e.message; }
+  }));
+}
+
 function renderLeaderboard() {
   const el = $("leaderboard");
   let html = `<div class="card"><h2>🏆 Goon Bucks Leaderboard</h2><table class="board">
@@ -279,7 +386,7 @@ function renderCommish() {
   const openId = w && w.status === "open" ? w.id : null;
   if (settleWeekId == null || !settleable.some((x) => x.id === settleWeekId)) {
     settleWeekId = openId || (settleable.length ? settleable[settleable.length - 1].id : null);
-    settleSel = { matchups: {}, props: {} };
+    settleSel = { matchups: {}, props: {}, spreads: {} };
     settleWeekData = null;
     settleWeekDataLoading = false;
   }
@@ -310,6 +417,15 @@ function renderCommish() {
             <button data-sm="${m.id}" data-side="a" class="${s === "a" ? "picked" : ""}">${esc(m.team_a)} wins</button>
             <button data-sm="${m.id}" data-side="b" class="${s === "b" ? "picked" : ""}">${esc(m.team_b)} wins</button>
           </div></div>`;
+        if (m.spread_line !== null && m.spread_line !== undefined) {
+          const line = Number(m.spread_line);
+          const ss = settleSel.spreads[m.id];
+          html += `<div class="field"><label>Spread — ${esc(m.team_a)} ${fmtSpread(line)} / ${esc(m.team_b)} ${fmtSpread(-line)}</label>
+            <div class="settle-grid">
+              <button data-ssm="${m.id}" data-side="a" class="${ss === "a" ? "picked" : ""}">${esc(m.team_a)} covers</button>
+              <button data-ssm="${m.id}" data-side="b" class="${ss === "b" ? "picked" : ""}">${esc(m.team_b)} covers</button>
+            </div></div>`;
+        }
       }
       for (const p of sw.props) {
         const s = settleSel.props[p.id];
@@ -325,13 +441,46 @@ function renderCommish() {
     }
   }
 
+  html += `<h3 style="color:var(--green); margin-top:20px">🔮 Futures</h3>
+    <p class="note">Post season-long markets. Win totals and playoff Yes/No are per team; the champion market covers all teams and settles in one tap.</p>
+    <div class="field"><label>Category</label><select id="nfCat">
+      <option value="wins">Season win total (Over/Under)</option>
+      <option value="champion">League champion (one team)</option>
+      <option value="playoffs">Make the playoffs (Yes/No)</option>
+    </select></div>
+    <div class="field"><label>Team</label><select id="nfTeam">${STATE.teams.map((t) => `<option>${esc(t)}</option>`).join("")}</select></div>
+    <div class="field"><label>Line — win total only (e.g. 8.5)</label><input type="number" step="0.5" id="nfLine" placeholder="8.5"></div>
+    <div style="display:flex;gap:6px">
+      <div class="field"><label>Odds A (Over / team / Yes)</label><input type="number" id="nfOA" placeholder="-110"></div>
+      <div class="field"><label>Odds B (Under / No)</label><input type="number" id="nfOB" placeholder="-110"></div>
+    </div>
+    <div class="error" id="nfErr"></div><div class="success" id="nfOk"></div>
+    <button id="nfAddBtn" style="width:100%">Post Future</button>`;
+  const openF = STATE.futures.filter((f) => f.status === "open");
+  if (openF.length) {
+    html += `<div class="field" style="margin-top:12px"><label>Settle open futures</label></div><div class="error" id="fsErr"></div><div class="bet-feed">`;
+    for (const f of openF) {
+      const lineTxt = f.line !== null && f.line !== undefined ? ` (${f.line})` : "";
+      html += `<div class="row"><div><b>${esc(f.label)}</b><br><span class="note">${esc(f.option_a)} ${fmtOdds(f.odds_a)}${f.option_b ? ` · ${esc(f.option_b)} ${fmtOdds(f.odds_b)}` : ""}${lineTxt}</span></div>
+        <div>${f.category === "champion"
+          ? `<span class="note">champion picker ↓</span>`
+          : `<button data-fwin="${f.id}" data-side="a">${esc(f.option_a)}</button> <button data-fwin="${f.id}" data-side="b">${esc(f.option_b)}</button>`}</div></div>`;
+    }
+    html += `</div>
+      <div class="field" style="margin-top:12px"><label>Crown the champion — settles every champion future at once</label>
+      <select id="champTeam">${STATE.teams.map((t) => `<option>${esc(t)}</option>`).join("")}</select></div>
+      <div class="error" id="champErr"></div>
+      <button id="champBtn" class="gold" style="width:100%">Crown Champion</button>`;
+  }
+
   html += `<h3 style="color:var(--green); margin-top:20px">Open a New Week</h3>
     <p class="note">Locks the current week and opens betting on the next one.</p>
     <div class="field"><label>Week number</label><input type="number" id="nwNum" value="${w ? w.week_number + 1 : 6}" min="1"></div>`;
   for (let i = 0; i < 5; i++) {
     html += `<div class="field"><label>Matchup ${i + 1} — team A (favorite listed first), team B, odds A, odds B</label>
       <input id="nwA${i}" placeholder="Team A" style="margin-bottom:4px"><input id="nwB${i}" placeholder="Team B" style="margin-bottom:4px">
-      <div style="display:flex;gap:6px"><input id="nwOA${i}" type="number" placeholder="Odds A (e.g. -150)"><input id="nwOB${i}" type="number" placeholder="Odds B (e.g. +130)"></div></div>`;
+      <div style="display:flex;gap:6px"><input id="nwOA${i}" type="number" placeholder="Odds A (e.g. -150)"><input id="nwOB${i}" type="number" placeholder="Odds B (e.g. +130)"></div>
+      <div style="display:flex;gap:6px;margin-top:4px"><input id="nwSL${i}" type="number" step="0.5" placeholder="Spread — A's line (e.g. -3.5)"><input id="nwSOA${i}" type="number" placeholder="Spread odds A (-110)"><input id="nwSOB${i}" type="number" placeholder="Spread odds B (-110)"></div></div>`;
   }
   for (let i = 0; i < 6; i++) {
     html += `<div class="field"><label>Prop ${i + 1}</label>
@@ -349,10 +498,13 @@ function renderCommish() {
   el.querySelectorAll("[data-sp]").forEach((b) => b.addEventListener("click", () => {
     settleSel.props[b.dataset.sp] = b.dataset.side; renderCommish();
   }));
+  el.querySelectorAll("[data-ssm]").forEach((b) => b.addEventListener("click", () => {
+    settleSel.spreads[b.dataset.ssm] = b.dataset.side; renderCommish();
+  }));
   const settleWeekSel = $("settleWeekSel");
   if (settleWeekSel) settleWeekSel.addEventListener("change", () => {
     settleWeekId = Number(settleWeekSel.value);
-    settleSel = { matchups: {}, props: {} };
+    settleSel = { matchups: {}, props: {}, spreads: {} };
     settleWeekData = null;
     settleWeekDataLoading = false;
     renderCommish();
@@ -366,9 +518,10 @@ function renderCommish() {
         week_id: settleWeekId,
         matchup_winners: Object.fromEntries(Object.entries(settleSel.matchups).map(([k, v]) => [Number(k), v])),
         prop_winners: Object.fromEntries(Object.entries(settleSel.props).map(([k, v]) => [Number(k), v])),
+        spread_winners: Object.fromEntries(Object.entries(settleSel.spreads).map(([k, v]) => [Number(k), v])),
         tiebreaker_actual: $("tbActual").value,
       });
-      settleSel = { matchups: {}, props: {} };
+      settleSel = { matchups: {}, props: {}, spreads: {} };
       settleWeekId = null;
       settleWeekData = null;
       await refresh();
@@ -378,12 +531,42 @@ function renderCommish() {
     $("nwErr").textContent = ""; $("nwOk").textContent = "";
     try {
       const matchups = [], props = [];
-      for (let i = 0; i < 5; i++) matchups.push({ team_a: $("nwA" + i).value, team_b: $("nwB" + i).value, odds_a: $("nwOA" + i).value, odds_b: $("nwOB" + i).value });
+      for (let i = 0; i < 5; i++) matchups.push({ team_a: $("nwA" + i).value, team_b: $("nwB" + i).value, odds_a: $("nwOA" + i).value, odds_b: $("nwOB" + i).value, spread_line: $("nwSL" + i).value, spread_odds_a: $("nwSOA" + i).value, spread_odds_b: $("nwSOB" + i).value });
       for (let i = 0; i < 6; i++) props.push({ label: $("npL" + i).value, option_a: $("npA" + i).value, option_b: $("npB" + i).value, odds_a: $("npOA" + i).value, odds_b: $("npOB" + i).value });
       await api("POST", "/api/admin/new-week", { passcode: "10502", week_number: Number($("nwNum").value), matchups, props });
       $("nwOk").textContent = "New week is open. Tell the league.";
       await refresh();
     } catch (e) { $("nwErr").textContent = e.message; }
+  });
+  $("nfAddBtn").addEventListener("click", async () => {
+    $("nfErr").textContent = ""; $("nfOk").textContent = "";
+    try {
+      await api("POST", "/api/admin/futures", {
+        passcode: "10502",
+        category: $("nfCat").value,
+        team_name: $("nfTeam").value,
+        line: $("nfLine").value,
+        odds_a: $("nfOA").value,
+        odds_b: $("nfOB").value,
+      });
+      $("nfOk").textContent = "Future posted. It's live on the Futures tab.";
+      await refresh();
+    } catch (e) { $("nfErr").textContent = e.message; }
+  });
+  el.querySelectorAll("[data-fwin]").forEach((b) => b.addEventListener("click", async () => {
+    $("fsErr").textContent = "";
+    try {
+      await api("POST", "/api/admin/settle-future", { passcode: "10502", future_id: Number(b.dataset.fwin), winner: b.dataset.side });
+      await refresh();
+    } catch (e) { $("fsErr").textContent = e.message; }
+  }));
+  const champBtn = $("champBtn");
+  if (champBtn) champBtn.addEventListener("click", async () => {
+    $("champErr").textContent = "";
+    try {
+      await api("POST", "/api/admin/settle-champion", { passcode: "10502", team_name: $("champTeam").value });
+      await refresh();
+    } catch (e) { $("champErr").textContent = e.message; }
   });
 }
 
@@ -395,6 +578,7 @@ async function refresh() {
   renderBetsFeed();
   renderPickem();
   renderProps();
+  renderFutures();
   renderLeaderboard();
   renderCommish();
   maybeShowJoin();
