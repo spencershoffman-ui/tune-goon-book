@@ -150,6 +150,60 @@ app.post("/api/join", async (req, res) => {
   }
 });
 
+// ---------- rejoin & team management ----------
+
+// Recover a lost session: trade the per-user token from a rejoin link for identity.
+// Fixes private-browsing / new-phone / wrong-browser lockouts without commish help.
+app.post("/api/rejoin", async (req, res) => {
+  try {
+    const token = String(req.body.token || "").trim();
+    if (!token) return res.status(400).json({ error: "Missing token." });
+    const user = (await db.query("SELECT id, team_name, bankroll FROM users WHERE token = $1", [token])).rows[0];
+    if (!user) return res.status(404).json({ error: "That rejoin link is invalid." });
+    res.json({ id: user.id, team_name: user.team_name, bankroll: user.bankroll, token });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not rejoin." });
+  }
+});
+
+// Commish: list claimed teams with rejoin-link tokens and activity counts.
+app.post("/api/admin/teams", async (req, res) => {
+  try {
+    if (!checkAdmin(req, res)) return;
+    const { rows } = await db.query(`
+      SELECT u.id, u.team_name, u.bankroll, u.created_at, u.token,
+        (SELECT COUNT(*) FROM bets b WHERE b.user_id = u.id) +
+        (SELECT COUNT(*) FROM spread_bets sb WHERE sb.user_id = u.id) +
+        (SELECT COUNT(*) FROM prop_bets pb WHERE pb.user_id = u.id) +
+        (SELECT COUNT(*) FROM pickems p WHERE p.user_id = u.id) +
+        (SELECT COUNT(*) FROM future_bets fb WHERE fb.user_id = u.id) AS activity
+      FROM users u ORDER BY u.id`);
+    res.json({ teams: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not load teams." });
+  }
+});
+
+// Commish: release a team claim. Frees the team so it can be claimed again;
+// also deletes that user's bets, picks and futures entries.
+app.post("/api/admin/release", async (req, res) => {
+  try {
+    if (!checkAdmin(req, res)) return;
+    const userId = Number(req.body.user_id);
+    const user = (await db.query("SELECT team_name FROM users WHERE id = $1", [userId])).rows[0];
+    if (!user) return res.status(404).json({ error: "Team not found." });
+    for (const t of ["bets", "spread_bets", "prop_bets", "pickems", "future_bets"])
+      await db.query(`DELETE FROM ${t} WHERE user_id = $1`, [userId]);
+    await db.query("DELETE FROM users WHERE id = $1", [userId]);
+    res.json({ ok: true, team_name: user.team_name });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not release team." });
+  }
+});
+
 // ---------- betting ----------
 
 async function placeWager({ user, week, kind, itemId, side, stake }) {

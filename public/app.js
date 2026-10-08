@@ -19,6 +19,7 @@ let settleWeekId = null;       // week selected for settling in the commish tab 
 let settleWeekData = null;     // {week, matchups, props} when settling a non-open week
 let settleWeekDataLoading = false;
 let commishAuthed = sessionStorage.getItem("tgb_commish") === "1";
+let commishTeams = null, commishTeamsLoading = false;  // commish teams panel data
 
 // ---------- tabs ----------
 $("tabs").addEventListener("click", (e) => {
@@ -380,6 +381,35 @@ function renderCommish() {
 
   const w = STATE.week;
   let html = `<div class="card"><h2>🔐 Commish Panel</h2>`;
+
+  // Teams: rejoin links + releasing orphaned claims.
+  if (!commishTeams && !commishTeamsLoading) {
+    commishTeamsLoading = true;
+    api("POST", "/api/admin/teams", { passcode: "10502" })
+      .then((d) => { commishTeams = d.teams; })
+      .catch((e) => { commishTeams = { error: e.message }; })
+      .finally(() => { commishTeamsLoading = false; renderCommish(); });
+  }
+  html += `<div class="card"><h2>👥 Teams</h2>`;
+  if (!commishTeams) {
+    html += `<p class="note">Loading teams…</p>`;
+  } else if (commishTeams.error) {
+    html += `<p class="error">${esc(commishTeams.error)}</p>`;
+  } else if (!commishTeams.length) {
+    html += `<p class="note">Nobody has claimed a team yet.</p>`;
+  } else {
+    html += commishTeams.map((t) => `
+      <div class="team-row">
+        <div><b>${esc(t.team_name)}</b><br><span class="note">${fmtGB(t.bankroll)} · ${t.activity} entries</span></div>
+        <div class="team-actions">
+          <button data-copy="${esc(t.token)}">Copy rejoin link</button>
+          <button data-release="${t.id}" data-name="${esc(t.team_name)}" class="danger">Release</button>
+        </div>
+      </div>`).join("");
+    html += `<p class="note">Text a rejoin link to anyone locked out (private browsing, new phone, wrong browser). Release frees a team so it can be claimed again — it also deletes that team's bets and picks.</p>`;
+  }
+  html += `</div>`;
+
   // Settle any unsettled week (open or locked) — so opening a new week never
   // strands an older one.
   const settleable = STATE.weeks.filter((x) => x.status !== "settled");
@@ -491,6 +521,25 @@ function renderCommish() {
   html += `<div class="error" id="nwErr"></div><div class="success" id="nwOk"></div>
     <button id="newWeekBtn" style="width:100%">Open New Week</button></div>`;
   el.innerHTML = html;
+
+  el.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+    const link = location.origin + "/?t=" + b.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(link);
+      b.textContent = "Copied!";
+      setTimeout(() => { b.textContent = "Copy rejoin link"; }, 1500);
+    } catch (e) {
+      prompt("Copy this rejoin link:", link);
+    }
+  }));
+  el.querySelectorAll("[data-release]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm(`Release ${b.dataset.name}? They'll lose their session and their bets/picks will be deleted. The team becomes claimable again.`)) return;
+    try {
+      await api("POST", "/api/admin/release", { passcode: "10502", user_id: Number(b.dataset.release) });
+      commishTeams = null;
+      await refresh();
+    } catch (e) { alert(e.message); }
+  }));
 
   el.querySelectorAll("[data-sm]").forEach((b) => b.addEventListener("click", () => {
     settleSel.matchups[b.dataset.sm] = b.dataset.side; renderCommish();
@@ -610,9 +659,26 @@ function enterBook() {
 $("gateBtn").addEventListener("click", tryUnlock);
 $("gateInput").addEventListener("keydown", (e) => { if (e.key === "Enter") tryUnlock(); });
 
-// ---------- boot ----------
-if (sessionStorage.getItem("tgb_gate") === "1") {
-  enterBook();
-} else {
-  $("gateInput").focus();
+// ---------- rejoin link ----------
+// A personal ?t= link restores a lost session (private browsing, new phone,
+// opened in the wrong browser). Runs before the gate so the session is back
+// by the time the book loads.
+async function maybeRejoinFromLink() {
+  const t = new URLSearchParams(location.search).get("t");
+  if (!t) return;
+  try {
+    const me = await api("POST", "/api/rejoin", { token: t });
+    session = { id: me.id, team_name: me.team_name, token: t };
+    localStorage.setItem("tgb_session", JSON.stringify(session));
+  } catch (e) { /* bad link — just enter the book normally */ }
+  history.replaceState(null, "", location.pathname);
 }
+
+// ---------- boot ----------
+maybeRejoinFromLink().finally(() => {
+  if (sessionStorage.getItem("tgb_gate") === "1") {
+    enterBook();
+  } else {
+    $("gateInput").focus();
+  }
+});
